@@ -99,8 +99,13 @@ def put_article():
 
     result = validators.url(reqjson['url'])
     if not result:
-        logging.debug("Bad URL: %s" % reqjson['url'])
-        abort(400)
+        # try again but with http://
+        result = validators.url('http://' + reqjson['url'])
+        if not result:
+            logging.debug("Bad URL: %s" % reqjson['url'])
+            abort(400)
+        else:
+            reqjson['url'] = 'http://' + reqjson['url']
 
     title = reqjson.get('title', reqjson['url'])
     url = reqjson['url']
