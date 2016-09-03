@@ -7,6 +7,8 @@ from model import User, ApiKey, Article, db
 from functools import wraps
 from datetime import datetime
 from peewee import IntegrityError
+import validators
+from validators import ValidationFailure
 import hashlib
 
 app = Flask(__name__)
@@ -59,7 +61,7 @@ def get_articles():
 
     return jsonify({'articles': list(userarticles)})
 
-@app.route('/articles/<int:id>', methods=['GET'])
+@app.route('/api/articles/<int:id>', methods=['GET'])
 @check_api_key
 def get_article(id):
     username = request.headers.get('x-koala-username')
@@ -95,8 +97,12 @@ def put_article():
 
     reqjson = request.get_json()
 
-    # TODO Validate fields.
-    title = reqjson.get('title', reqjson.get('url'))
+    result = validators.url(reqjson['url'])
+    if not result:
+        logging.debug("Bad URL: %s" % reqjson['url'])
+        abort(400)
+
+    title = reqjson.get('title', reqjson['url'])
     url = reqjson['url']
     date = str(datetime.now())
     read = False
@@ -114,7 +120,7 @@ def register():
     password = reqjson.get('password', '')
 
     if not username or not password:
-        logger.debug('Denying access for username of %s' % username)
+        logging.debug('Denying access for username of %s' % username)
         abort(400)
 
     try:
