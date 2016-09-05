@@ -14,7 +14,8 @@ import hashlib
 app = Flask(__name__)
 SALT = config.get_database_salt()
 
-logging.basicConfig(filename=config.get_log_path(),level=logging.__getattribute__(config.get_log_level()))
+#logging.basicConfig(filename=config.get_log_path(),level=logging.__getattribute__(config.get_log_level()))
+logging.basicConfig(level=logging.__getattribute__(config.get_log_level()))
 
 def locate_user(username, apikey):
     '''
@@ -22,13 +23,13 @@ def locate_user(username, apikey):
     Returns None upon failure.
     '''
     if not username or not apikey:
-        logging.debug('Trying to locate user but Username/APIKey empty.')
+        logging.info('Trying to locate user but Username/APIKey empty.')
         return None
 
     results = User.select().join(ApiKey).where((User.username==username) & (ApiKey.key==apikey))
 
     if results.count() != 1:
-        logging.debug("Unable to locate user.")
+        logging.info("Unable to locate user.")
         return None
 
     return results[0]
@@ -53,6 +54,10 @@ def check_api_key(func):
 @app.route('/articles', methods=['GET'])
 @check_api_key
 def get_articles():
+    '''
+    Get list of articles for particular user.
+    TODO: Needs paging.
+    '''
     username = request.headers.get('x-koala-username')
     apikey = request.headers.get('x-koala-key')
     user = locate_user(username, apikey)
@@ -61,9 +66,12 @@ def get_articles():
 
     return jsonify({'articles': list(userarticles)})
 
-@app.route('/api/articles/<int:id>', methods=['GET'])
+@app.route('/articles/<int:id>', methods=['GET'])
 @check_api_key
 def get_article(id):
+    '''
+    Get specific article based on its ID.
+    '''
     username = request.headers.get('x-koala-username')
     apikey = request.headers.get('x-koala-key')
     user = locate_user(username, apikey)
@@ -77,6 +85,9 @@ def get_article(id):
 @app.route('/articles/<int:id>', methods=['DELETE'])
 @check_api_key
 def remove_article(id):
+    '''
+    Remote a specific article based on its ID.
+    '''
     username = request.headers.get('x-koala-username')
     apikey = request.headers.get('x-koala-key')
     user = locate_user(username, apikey)
@@ -88,9 +99,35 @@ def remove_article(id):
     else:
         return '', 200
 
+@app.route('/articles/<int:id>', methods=['PUT'])
+@check_api_key
+def update_article(id):
+    username = request.headers.get('x-koala-username')
+    apikey = request.headers.get('x-koala-key')
+    user = locate_user(username, apikey)
+
+    reqjson = request.get_json()
+
+    article = Article.select().join(User).where((Article.id==id) & (User.id == user.id)).get()
+    if not article:
+        abort(404)
+    elif not reqjson:
+        abort(400)
+    else:
+        if reqjson.has_key('read'):
+            article.read = reqjson['read'] != False
+        if reqjson.has_key('favorite'):
+            article.favorite = reqjson['favorite'] != False
+        article.save()
+        return '', 204
+
+
 @app.route('/articles', methods=['POST'])
 @check_api_key
 def put_article():
+    '''
+    Add new article for a user.
+    '''
     username = request.headers.get('x-koala-username')
     apikey = request.headers.get('x-koala-key')
     user = locate_user(username, apikey)
@@ -102,7 +139,7 @@ def put_article():
         # try again but with http://
         result = validators.url('http://' + reqjson['url'])
         if not result:
-            logging.debug("Bad URL: %s" % reqjson['url'])
+            logging.info("Bad URL: %s" % reqjson['url'])
             abort(400)
         else:
             reqjson['url'] = 'http://' + reqjson['url']
@@ -120,6 +157,10 @@ def put_article():
 
 @app.route('/users', methods=['POST'])
 def register():
+    '''
+    Register a new user and generate then an API Key.
+    Returns JSON-encoded username and API Key.
+    '''
     reqjson = request.get_json()
     username = reqjson.get('username', '')
     password = reqjson.get('password', '')
@@ -138,11 +179,15 @@ def register():
 
     apikey = ApiKey.create(owner=user.id, key=key.hexdigest())
 
-    logging.debug('registered user with username %s' % username)
+    logging.warn('registered user with username %s' % username)
     return jsonify({'username': user.username, 'apikey': apikey.key}), 201
 
 @app.route('/key', methods=['POST'])
 def generate_key():
+    '''
+    Generate a new key for user.
+    Returns JSON-encoded username and API Key.
+    '''
     reqjson = request.get_json()
     username = reqjson.get('username', '')
     password = reqjson.get('password', '')
@@ -161,20 +206,31 @@ def generate_key():
         logging.debug('Unable to authenticate user to generate API Key for username %s' % username)
         abort(403)
 
-def init(f):
-    @wraps(f)
-    def wrapped(*args, **kwards):
-        try:
-            db.connect()
-            db.create_tables([User, ApiKey, Article], safe=True)
-            #app.run(debug=True)
-            f()
-        finally:
-            db.close()
-    return wrapped
+@app.before_request
+def db_connect():
+    '''
+    Create a database connection before each request.
+    '''
+    logging.debug("Connecting to database.")
+    db.connect()
+    logging.debug("Connected to database.")
+
+@app.after_request
+def db_close(response):
+    '''
+    Close the database connection after each request.
+    '''
+    logging.debug("Closing database connection.")
+    if not db.is_closed():
+        db.close()
+    else:
+        logging.debug("Database connection already closed.")
+    logging.debug("Closed database connection.")
+    return response
+
+@app.before_first_request
+def db_init():
+    db.create_tables([User, ApiKey, Article], safe=True)
 
 if __name__=="__main__":
-    @init
-    def run():
-        app.run(debug=True)
-    run()
+    app.run(debug=True)

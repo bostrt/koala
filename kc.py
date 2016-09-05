@@ -3,6 +3,7 @@ import argparse
 from xdg import BaseDirectory
 import requests
 import json
+import sys
 
 KOALA_LOGIN_FILE='login'
 KOALA_SERVER="http://localhost:5000/"
@@ -19,6 +20,10 @@ addparser = subparser.add_parser('add')
 rmparser = subparser.add_parser('rm')
 listparser = subparser.add_parser('list')
 genkeyparser = subparser.add_parser('genkey')
+readparser = subparser.add_parser('read')
+unreadparser = subparser.add_parser('unread')
+favoriteparser = subparser.add_parser('favorite')
+unfavoriteparser = subparser.add_parser('unfavorite')
 
 registerparser.add_argument('-u', '--username', required=True)
 registerparser.add_argument('-p', '--password', required=True)
@@ -42,6 +47,18 @@ listparser.set_defaults(which='list')
 genkeyparser.add_argument('-u', '--username')
 genkeyparser.add_argument('-p', '--password')
 genkeyparser.set_defaults(which='genkey')
+
+readparser.add_argument('-a', '--article', required=True)
+readparser.set_defaults(which='read')
+
+unreadparser.add_argument('-a', '--article', required=True)
+unreadparser.set_defaults(which='unread')
+
+favoriteparser.add_argument('-a', '--article', required=True)
+favoriteparser.set_defaults(which='favorite')
+
+unfavoriteparser.add_argument('-a', '--article', required=True)
+unfavoriteparser.set_defaults(which='unfavorite')
 
 def write_login_file(username, key):
     # Save username and password to user home.
@@ -144,17 +161,57 @@ def genkey(args):
         write_login_file(args.username, apikey)
         print 'New API Key generated and saved'
 
+def read(args, state):
+    user, key = read_login_file()
+    headers = {
+        X_KOALA_USERNAME: user,
+        X_KOALA_KEY: key,
+        'Content-Type': 'application/json',
+    }
+    payload = {'read': state}
+    r = requests.put(KOALA_SERVER + KOALA_API_PATH + 'articles/' + args.article, data=json.dumps(payload), headers=headers, verify=False)
+    if r.status_code != 204:
+        print r.text
+    else:
+        print 'Marked article %s as %s' % (args.article, 'read' if state else 'unread')
+
+def favorite(args, state):
+    user, key = read_login_file()
+    headers = {
+        X_KOALA_USERNAME: user,
+        X_KOALA_KEY: key,
+        'Content-Type': 'application/json',
+    }
+    payload = {'favorite': state}
+    r = requests.put(KOALA_SERVER + KOALA_API_PATH + 'articles/' + args.article, data=json.dumps(payload), headers=headers, verify=False)
+    if r.status_code != 204:
+        print r.text
+    else:
+        print '%s article %s as favorite' % ('Removing' if state else 'Marking', args.article)
+
 args = parser.parse_args()
 
-if args.which == 'register':
-    register(args)
-elif args.which == 'list':
-    listing(args)
-elif args.which == 'add':
-    add(args)
-elif args.which == 'genkey':
-    genkey(args)
-elif args.which == 'login':
-    login(args)
-elif args.which == 'rm':
-    rm(args)
+try:
+    if args.which == 'register':
+        register(args)
+    elif args.which == 'list':
+        listing(args)
+    elif args.which == 'add':
+        add(args)
+    elif args.which == 'genkey':
+        genkey(args)
+    elif args.which == 'login':
+        login(args)
+    elif args.which == 'rm':
+        rm(args)
+    elif args.which == 'read':
+        read(args, True)
+    elif args.which == 'unread':
+        read(args, False)
+    elif args.which == 'favorite':
+        favorite(args, True)
+    elif args.which == 'unfavorite':
+        favorite(args, False)
+
+except:
+    print("Unexpected error:", sys.exc_info()[0])
