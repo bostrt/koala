@@ -8,7 +8,7 @@ class Config:
     def get_database_path(self):
         return self.get_config('database', 'path', './koala.db')
     def get_database_salt(self):
-        return self.get_config('database', 'salt')
+        return self.get_config('database', 'salt', 'WHYDOESN"TTHISWORK')
 
     def get_log_path(self):
         return self.get_config('log', 'path', './koala.log')
@@ -21,7 +21,7 @@ class Config:
             return self.config.get(section, property)
         except (NoOptionError, NoSectionError):
             if not default:
-                raise RuntimeError("Configure salt in koala.ini")
+                raise RuntimeError("Configure %s in section %s of koala.ini." % (property, section))
             return default
 
 config = Config('koala.ini')
